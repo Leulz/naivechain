@@ -8,6 +8,8 @@ var http_port = process.env.HTTP_PORT || 3001;
 var p2p_port = process.env.P2P_PORT || 6001;
 var initialPeers = process.env.PEERS ? process.env.PEERS.split(',') : [];
 
+var difficulty = 8;
+
 class Block {
     constructor(index, previousHash, timestamp, data, hash) {
         this.index = index;
@@ -38,9 +40,13 @@ var initHttpServer = () => {
     app.get('/blocks', (req, res) => res.send(JSON.stringify(blockchain)));
     app.post('/mineBlock', (req, res) => {
         var newBlock = generateNextBlock(req.body.data);
-        addBlock(newBlock);
-        broadcast(responseLatestMsg());
-        console.log('block added: ' + JSON.stringify(newBlock));
+        try {
+            addBlock(newBlock);
+            broadcast(responseLatestMsg());
+            console.log('block added: ' + JSON.stringify(newBlock));
+        } catch(e) {
+            console.log("Invalid block, not added to blockchain.");
+        }
         res.send();
     });
     app.get('/peers', (req, res) => {
@@ -95,7 +101,6 @@ var initErrorHandler = (ws) => {
     ws.on('error', () => closeConnection(ws));
 };
 
-
 var generateNextBlock = (blockData) => {
     var previousBlock = getLatestBlock();
     var nextIndex = previousBlock.index + 1;
@@ -113,9 +118,24 @@ var calculateHash = (index, previousHash, timestamp, data) => {
     return CryptoJS.SHA256(index + previousHash + timestamp + data).toString();
 };
 
+function checkHex(n){return/^[0-9A-Fa-f]{1,64}$/.test(n)}
+
+function Hex2Bin(n){if(!checkHex(n))return 0;return parseInt(n,16).toString(2)}
+
+var calculateHashDifficulty = (hash) => {
+    var hashDifficulty = 0;
+    var hashBin = Hex2Bin(hash);
+    for (var i = 0, len = hashBin.length; i < len && hashBin[i] === '0'; i++) {
+        hashDifficulty += 1;
+    }
+    return hashDifficulty;
+};
+
 var addBlock = (newBlock) => {
     if (isValidNewBlock(newBlock, getLatestBlock())) {
         blockchain.push(newBlock);
+    } else {
+        throw "InvalidBlockException";
     }
 };
 
@@ -129,6 +149,9 @@ var isValidNewBlock = (newBlock, previousBlock) => {
     } else if (calculateHashForBlock(newBlock) !== newBlock.hash) {
         console.log(typeof (newBlock.hash) + ' ' + typeof calculateHashForBlock(newBlock));
         console.log('invalid hash: ' + calculateHashForBlock(newBlock) + ' ' + newBlock.hash);
+        return false;
+    } else if (calculateHashDifficulty(newBlock.hash) < difficulty) {
+        console.log('hash produced does not have the proper difficulty, expected ' + difficulty + ', got ' + calculateHashDifficulty(newBlock.hash));
         return false;
     }
     return true;
