@@ -1,25 +1,15 @@
 'use strict';
-var CryptoJS = require("crypto-js");
 var express = require("express");
 var bodyParser = require('body-parser');
 var WebSocket = require("ws");
+const Block = require('./block.js');
+const util = require('./util.js');
 
 var http_port = process.env.HTTP_PORT || 3001;
 var p2p_port = process.env.P2P_PORT || 6001;
 var initialPeers = process.env.PEERS ? process.env.PEERS.split(',') : [];
 
 var difficulty = 16;
-
-class Block {
-    constructor(index, previousHash, timestamp, data, hash, nonce) {
-        this.index = index;
-        this.previousHash = previousHash.toString();
-        this.timestamp = timestamp;
-        this.data = data;
-        this.hash = hash.toString();
-        this.nonce = nonce;
-    }
-}
 
 var sockets = [];
 var MessageType = {
@@ -37,18 +27,35 @@ var blockchain = [getGenesisBlock()];
 var initHttpServer = () => {
     var app = express();
     app.use(bodyParser.json());
+    app.use(function (req, res, next) {
+        // Website you wish to allow to connect
+        res.setHeader('Access-Control-Allow-Origin', '*');
+
+        // Request methods you wish to allow
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+
+        // Request headers you wish to allow
+        res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
+
+        next();
+    });
 
     app.get('/blocks', (req, res) => res.send(JSON.stringify(blockchain)));
     app.post('/mineBlock', (req, res) => {
-        var newBlock = startMining(req.body.data);
+        var newBlock = req.body;
         try {
             addBlock(newBlock);
             broadcast(responseLatestMsg());
-            console.log('block added: ' + JSON.stringify(newBlock));
         } catch(e) {
             console.log("Invalid block, not added to blockchain.");
         }
         res.send();
+    });
+    app.get('/lastBlock', (req, res) => {
+        res.send(JSON.stringify(getLatestBlock()));
+    });
+    app.get('/difficulty', (req, res) => {
+        res.send(JSON.stringify({difficulty:difficulty}));
     });
     app.get('/peers', (req, res) => {
         res.send(sockets.map(s => s._socket.remoteAddress + ':' + s._socket.remotePort));
@@ -102,51 +109,8 @@ var initErrorHandler = (ws) => {
     ws.on('error', () => closeConnection(ws));
 };
 
-var startMining = (blockData) => {
-    var previousBlock = getLatestBlock();
-    var nextIndex = previousBlock.index + 1;
-    var nextTimestamp = new Date().getTime() / 1000;
-    var nonce = 0;
-    var hashDifficulty = calculateHashDifficulty(calculateHash(nextIndex, previousBlock.hash, nextTimestamp, blockData, nonce));
-    while (hashDifficulty < difficulty) {
-        nonce++;
-        hashDifficulty = calculateHashDifficulty(calculateHash(nextIndex, previousBlock.hash, nextTimestamp, blockData, nonce));
-    }
-    var nextHash = calculateHash(nextIndex, previousBlock.hash, nextTimestamp, blockData, nonce);
-    return new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nextHash, nonce);
-};
-
-var generateNextBlock = (blockData) => {
-    var previousBlock = getLatestBlock();
-    var nextIndex = previousBlock.index + 1;
-    var nextTimestamp = new Date().getTime() / 1000;
-    var nextHash = calculateHash(nextIndex, previousBlock.hash, nextTimestamp, blockData);
-    return new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nextHash, nonce);
-};
-
-
 var calculateHashForBlock = (block) => {
-    return calculateHash(block.index, block.previousHash, block.timestamp, block.data, block.nonce);
-};
-
-var calculateHash = (index, previousHash, timestamp, data, nonce) => {
-    return CryptoJS.SHA256(index + previousHash + timestamp + data + nonce).toString();
-};
-
-function checkHex(n){return/^[0-9A-Fa-f]{1,64}$/.test(n)}
-
-function Hex2Bin(n){if(!checkHex(n))return 0;return parseInt(n,16).toString(2)}
-
-var calculateHashDifficulty = (hash) => {
-    var hashDifficulty = 0;
-    var hashBin = Hex2Bin(hash);
-    while(hashBin.length < hash.length * 4) {
-        hashBin = "0" + hashBin;
-    }
-    for (var i = 0, len = hashBin.length; i < len && hashBin[i] === '0'; i++) {
-        hashDifficulty += 1;
-    }
-    return hashDifficulty;
+    return util.calculateHash(block.index, block.previousHash, block.timestamp, block.data, block.nonce);
 };
 
 var addBlock = (newBlock) => {
@@ -165,11 +129,10 @@ var isValidNewBlock = (newBlock, previousBlock) => {
         console.log('invalid previoushash');
         return false;
     } else if (calculateHashForBlock(newBlock) !== newBlock.hash) {
-        console.log(typeof (newBlock.hash) + ' ' + typeof calculateHashForBlock(newBlock));
         console.log('invalid hash: ' + calculateHashForBlock(newBlock) + ' ' + newBlock.hash);
         return false;
-    } else if (calculateHashDifficulty(newBlock.hash) < difficulty) {
-        console.log('hash produced does not have the proper difficulty, expected ' + difficulty + ', got ' + calculateHashDifficulty(newBlock.hash));
+    } else if (util.calculateHashDifficulty(newBlock.hash) < difficulty) {
+        console.log('hash produced does not have the proper difficulty, expected ' + difficulty + ', got ' + util.calculateHashDifficulty(newBlock.hash));
         return false;
     }
     return true;
@@ -249,3 +212,5 @@ var broadcast = (message) => sockets.forEach(socket => write(socket, message));
 connectToPeers(initialPeers);
 initHttpServer();
 initP2PServer();
+
+module.exports = Block;
