@@ -1,3 +1,5 @@
+//TODO: make the difficulty self-adjusting
+
 'use strict';
 var express = require("express");
 var bodyParser = require('body-parser');
@@ -9,7 +11,7 @@ var http_port = process.env.HTTP_PORT || 3001;
 var p2p_port = process.env.P2P_PORT || 6001;
 var initialPeers = process.env.PEERS ? process.env.PEERS.split(',') : [];
 
-var difficulty = 16;
+var difficulty = 12;
 
 var sockets = [];
 var MessageType = {
@@ -48,8 +50,9 @@ var initHttpServer = () => {
             broadcast(responseLatestMsg());
         } catch(e) {
             console.log("Invalid block, not added to blockchain.");
+            res.status(422);
         }
-        res.send();
+        res.send({});
     });
     app.get('/lastBlock', (req, res) => {
         res.send(JSON.stringify(getLatestBlock()));
@@ -62,7 +65,7 @@ var initHttpServer = () => {
     });
     app.post('/addPeer', (req, res) => {
         connectToPeers([req.body.peer]);
-        res.send();
+        res.send({});
     });
     app.listen(http_port, () => console.log('Listening http on port: ' + http_port));
 };

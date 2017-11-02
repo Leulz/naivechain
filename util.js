@@ -1,4 +1,4 @@
-const CryptoJS = require("crypto-js");
+var CryptoJS = require('crypto-js');
 
 const calculateHash = (index, previousHash, timestamp, data, nonce) => {
   return CryptoJS.SHA256(index + previousHash + timestamp + data + nonce).toString();
