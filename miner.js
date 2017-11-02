@@ -1,4 +1,4 @@
-//TODO: solve the "XML Parsing Error: no root element found Location: http://localhost:3001/mineBlock" error when mining.
+//Use $http to send requests
 
 var util = require('./util.js');
 var Block = require('./block.js');
