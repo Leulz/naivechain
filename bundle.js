@@ -12,14 +12,16 @@ class Block {
 
 module.exports = Block;
 },{}],2:[function(require,module,exports){
-//TODO: solve the "XML Parsing Error: no root element found Location: http://localhost:3001/mineBlock" error when mining.
+//Use $http to send requests
 
 var util = require('./util.js');
 var Block = require('./block.js');
 
 var app = angular.module('miner-app',[]);
 
-app.controller('MinerController', ['$scope', '$q', '$timeout', function($scope, $q, $timeout) {
+app.controller('MinerController', ['$scope', '$q', '$timeout', '$http', function($scope, $q, $timeout, $http) {
+
+  var API_URL = 'http://localhost:3001/';
 
   $scope.blockData = "";
 
@@ -38,11 +40,15 @@ app.controller('MinerController', ['$scope', '$q', '$timeout', function($scope, 
   };
 
   const getLatestBlock = () => {
-    return sendRequest('GET', 'lastBlock');
+    return $http.get(API_URL + 'lastBlock');
   };
 
   const getCurrentDifficulty = () => {
-    return sendRequest('GET', 'difficulty');
+    return $http.get(API_URL + 'difficulty');
+  };
+
+  const sendMinedBlock = (block) => {
+    return $http.post(API_URL + 'mineBlock', block);
   };
 
   const findProperHash = (currentDifficulty, previousBlock, blockData, nonce) => {
@@ -72,12 +78,12 @@ app.controller('MinerController', ['$scope', '$q', '$timeout', function($scope, 
   };
 
   $scope.startMining = () => {
-    return getLatestBlock().then((previousBlock) => {
-      previousBlock = JSON.parse(previousBlock);
-      return getCurrentDifficulty().then((data) => {
-        data = JSON.parse(data);
+    return getLatestBlock().then((success) => {
+      let previousBlock = success.data;
+      return getCurrentDifficulty().then((success) => {
+        let data = success.data;
         return findProperHash(data.difficulty, previousBlock, $scope.blockData, 0).then((block) => {
-          return sendRequest('POST','mineBlock',JSON.stringify(block)).then((success) => {
+          return sendMinedBlock(JSON.stringify(block)).then((success) => {
             console.log("Block successfully mined and attached to the blockchain!")
           }, (rejection) => {
             console.log("The blockchain rejected the block mined.");
